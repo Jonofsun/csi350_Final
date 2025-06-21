@@ -1,0 +1,10 @@
+# core framework
+Flask>=2.2.5
+flask-cors>=3.0.10
+
+# real‐time websocket support
+Flask-SocketIO>=5.5.1
+eventlet>=0.33.3         # or gevent>=21.8.0 if you prefer
+
+# environment‐variable loading
+python-dotenv>=1.0.0
