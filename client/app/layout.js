@@ -1,4 +1,5 @@
-// client/app/layout.js
+import { Suspense } from 'react';
+
 export const metadata = {
   title: 'D&D Character Sheets',
   description: 'Manage your party in real time',
@@ -11,7 +12,11 @@ export default function RootLayout({ children }) {
         <header className="mb-8">
           <h1 className="text-4xl font-bold">D&D Sheets</h1>
         </header>
-        <main>{children}</main>
+        <main>
+          <Suspense fallback={<p>Loading page…</p>}>
+            {children}
+          </Suspense>
+        </main>
       </body>
     </html>
   );
