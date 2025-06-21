@@ -1,5 +1,6 @@
 # server/routes.py
 from flask import request, jsonify
+from flask_socketio import emit, join_room
 from server.app import app, socketio
 from server.store import (
     CHARACTERS, new_character, find_character,
@@ -95,6 +96,11 @@ def create_ability(char_id):
         ability = AbilityScore(id=new_id, name=name, score=data.get('score', 10))
 
     char.abilities.append(ability)
+    socketio.emit(
+        'ability_created',
+        {'character_id': char.id, 'ability': ability.__dict__},
+        room=f'character_{char.id}'
+    )
     return jsonify(ability.__dict__), 201
 
 @app.route('/characters/<int:char_id>/abilities/<int:ability_id>',
@@ -121,6 +127,11 @@ def update_ability(char_id, ability_id):
     data = request.get_json() or {}
     if 'score' in data:
         ability.score = data['score']
+    socketio.emit(
+        'ability_updated',
+        {'character_id': char.id, 'ability': ability.__dict__},
+        room=f'character_{char.id}'
+    )
     return jsonify(ability.__dict__)
 
 @app.route('/characters/<int:char_id>/abilities/<int:ability_id>',
@@ -133,6 +144,11 @@ def delete_ability(char_id, ability_id):
     if not ability:
         return jsonify({'error': 'Ability not found'}), 404
     char.abilities.remove(ability)
+    socketio.emit(
+        'ability_deleted',
+        {'character_id': char.id, 'ability_id': ability_id},
+        room=f'character_{char.id}'
+    )
     return jsonify({}), 204
 
 # === Equipment sub-resources ===
@@ -161,6 +177,11 @@ def create_equipment(char_id):
                       name=name,
                       quantity=data.get('quantity', 1))
     char.equipment.append(equip)
+    socketio.emit(
+        'equipment_created',
+        {'character_id': char.id, 'equipment': equip.__dict__},
+        room=f'character_{char.id}'
+    )
     return jsonify(equip.__dict__), 201
 
 @app.route('/characters/<int:char_id>/equipment/<int:equip_id>',
@@ -189,6 +210,11 @@ def update_equipment(char_id, equip_id):
         equip.name = data['name']
     if 'quantity' in data:
         equip.quantity = data['quantity']
+    socketio.emit(
+        'equipment_updated',
+        {'character_id': char.id, 'equipment': equip.__dict__},
+        room=f'character_{char.id}'
+    )
     return jsonify(equip.__dict__)
 
 @app.route('/characters/<int:char_id>/equipment/<int:equip_id>',
@@ -201,15 +227,47 @@ def delete_equipment(char_id, equip_id):
     if not equip:
         return jsonify({'error': 'Equipment not found'}), 404
     char.equipment.remove(equip)
+    socketio.emit(
+        'equipment_deleted',
+        {'character_id': char.id, 'equipment_id': equip_id},
+        room=f'character_{char.id}'
+    )
     return jsonify({}), 204
 
-# === Example Socket.IO event ===
+# === Socket.IO room join ===
 
-@socketio.on('status_update')
-def on_status_update(data):
-    """
-    Client can emit:
-      socket.emit('status_update', { character_id: 1, msg: '...' })
-    and the server will broadcast to all clients.
-    """
-    socketio.emit('broadcast_status', data)
+@socketio.on('join_character')
+def handle_join(data):
+    cid = data.get('character_id')
+    join_room(f'character_{cid}')
+    emit('joined', {'message': f'Joined character {cid} room'}, room=f'character_{cid}')
+@socketio.on('leave_character')
+def handle_leave(data):
+    cid = data.get('character_id')
+    socketio.leave_room(f'character_{cid}')
+    emit('left', {'message': f'Left character {cid} room'}, room=f'character_{cid}')
+# === Error handling ===
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({'error': 'Not found'}), 404
+@app.errorhandler(500)
+def internal_error(error):
+    return jsonify({'error': 'Internal server error'}), 500
+@app.errorhandler(Exception)
+def handle_exception(error):
+    # Log the error
+    app.logger.error(f"Unhandled exception: {error}")
+    return jsonify({'error': 'An unexpected error occurred'}), 500
+# === Socket.IO events ===
+@socketio.on('connect')
+def handle_connect():
+    app.logger.info('Client connected')
+    emit('connected', {'message': 'You are connected to the server'})
+@socketio.on('disconnect')
+def handle_disconnect():
+    app.logger.info('Client disconnected')
+    emit('disconnected', {'message': 'You have been disconnected from the server'})
+@socketio.on('error')
+def handle_error(error):
+    app.logger.error(f"Socket.IO error: {error}")
+    emit('error', {'message': 'An error occurred on the server'})
